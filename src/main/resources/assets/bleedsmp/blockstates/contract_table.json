@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "bleedsmp:block/contract_table"
+    }
+  }
+}

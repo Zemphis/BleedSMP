@@ -2,6 +2,7 @@ package net.zemphis.bleedsmp;
 
 import net.fabricmc.api.ModInitializer;
 
+import net.zemphis.bleed.item.ModItems;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +12,7 @@ public class BleedSMP implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModItems.registerModItems();
 
 	}
 }
