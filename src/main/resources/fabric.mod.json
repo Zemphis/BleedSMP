@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "bleedsmp",
+	"version": "${version}",
+	"name": "Bleed SMP",
+	"description": "The mod that makes the Bleed SMP work",
+	"authors": [
+		"Zemphis"
+	],
+	"contact": {
+		"homepage": "https://fardeenrahman.com/",
+		"sources": "https://github.com/Zemphis/BleedSMP"
+	},
+	"license": "MIT",
+	"icon": "assets/bleedsmp/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.zemphis.bleedsmp.BleedSMP"
+		],
+		"fabric-datagen": [
+			"net.zemphis.bleedsmp.BleedSMPDataGenerator"
+		],
+		"client": [
+			"net.zemphis.bleedsmp.BleedSMPClient"
+		]
+	},
+	"mixins": [
+		"bleedsmp.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"minecraft": "~1.21",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
