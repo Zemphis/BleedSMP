@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
 import net.zemphis.bleedsmp.BleedSMP;
 
 public class ModBlocks {
-    public static final Block CONTRACT_TABLE = registerBlock("contract_table", new Block(AbstractBlock.Settings.create().strength(30f, 20f).requiresTool().sounds(BlockSoundGroup.NETHER_BRICKS)));
+    public static final Block CONTRACT_TABLE = registerBlock("contract_table", new ContractTableBlock(AbstractBlock.Settings.create().strength(50.0f, 2.0f).requiresTool().sounds(BlockSoundGroup.NETHER_BRICKS))); // custom block implementation
 
     private static Block registerBlock(String name, Block block) {
         registerBlockItem(name, block);
