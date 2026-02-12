@@ -12,7 +12,9 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Formatting;
 import net.zemphis.bleed.block.ModBlocks;
 import net.zemphis.bleed.item.ContractItem;
 import net.zemphis.bleed.item.ModItems;
@@ -32,15 +34,14 @@ public class BleedSMP implements ModInitializer {
 
 		ServerLivingEntityEvents.AFTER_DEATH.register((livingEntity, damageSource) -> {
 			if (livingEntity instanceof ServerPlayerEntity player) {
+				// any player dies
 				ItemStack contractStack = new ItemStack(ModItems.TIER_I_CONTRACT);
-
-
 				if (contractStack.getItem() instanceof ContractItem contractItem) {
 					contractItem.setOwner(contractStack, player.getName().getString(), 1);
 				}
-
 				player.dropItem(contractStack, true, false);
 
+				// target dies
 				for (ServerPlayerEntity hunter : player.server.getPlayerManager().getPlayerList()) {
 					if (isCurrentlyHunting(hunter)) {
 						String targetName = getHunterTargetName(hunter);
@@ -48,6 +49,21 @@ public class BleedSMP implements ModInitializer {
 						if (player.getName().getString().equals(targetName)) {
 							endHunt(hunter, getHunterTier(player), true);
 						}
+					}
+				}
+
+				// hunter dies
+				if (isCurrentlyHunting(player)) {
+					int tier = getHunterTier(player);
+					endHunt(player, tier, false);
+					player.sendMessage(Text.literal("You died during the hunt! Contract failed.").formatted(Formatting.RED), false);
+
+					if (tier == 2) {
+						ItemStack t2Contract = new ItemStack(ModItems.TIER_II_CONTRACT);
+						if (t2Contract.getItem() instanceof ContractItem contractItem) {
+							contractItem.setOwner(t2Contract, player.getName().getString(), 2);
+						}
+						player.dropItem(t2Contract, true, false);
 					}
 				}
 
@@ -65,11 +81,13 @@ public class BleedSMP implements ModInitializer {
 		});
 
 		AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-			if (!world.isClient && entity instanceof ServerPlayerEntity target && player instanceof ServerPlayerEntity serverHunter) {
-				if (isCurrentlyHunting(serverHunter)) {
-					String huntTarget = getHunterTargetName(serverHunter);
-					if (target.getName().getString().equals(huntTarget)) {
-						applyTieredDebuffs(target, getHunterTier(serverHunter));
+			if (!world.isClient && player instanceof ServerPlayerEntity serverHunter) {
+				if (entity instanceof ServerPlayerEntity target) {
+					if (isCurrentlyHunting(serverHunter)) {
+						String huntTarget = getHunterTargetName(serverHunter);
+						if (target.getName().getString().equals(huntTarget)) {
+							applyTieredDebuffs(target, getHunterTier(serverHunter));
+						}
 					}
 				}
 			}
@@ -80,7 +98,7 @@ public class BleedSMP implements ModInitializer {
 
 	private boolean isCurrentlyHunting(ServerPlayerEntity player) {
 		NbtCompound nbt = new NbtCompound();
-		player.readCustomDataFromNbt(nbt);
+		player.writeCustomDataToNbt(nbt);
 
 		if (!nbt.getBoolean("IsHunting")) return false;
 
@@ -89,7 +107,7 @@ public class BleedSMP implements ModInitializer {
 
 		if (currentTime > startTime + 18000) {
 			nbt.putBoolean("IsHunting", false);
-			player.writeCustomDataToNbt(nbt);
+			player.readCustomDataFromNbt(nbt);
 			return false;
 		}
 		return true;
@@ -138,7 +156,7 @@ public class BleedSMP implements ModInitializer {
 
 	private void endHunt(ServerPlayerEntity hunter, int tier, boolean success) {
 		NbtCompound nbt = new NbtCompound();
-		hunter.readCustomDataFromNbt(nbt);
+		hunter.writeCustomDataToNbt(nbt);
 
 		nbt.putBoolean("IsHunting", false);
 		nbt.putString("HuntingTarget", "");
@@ -158,6 +176,6 @@ public class BleedSMP implements ModInitializer {
 		if (success && tier == 3) {
 			//consume contract
 		}
-		hunter.writeCustomDataToNbt(nbt);
+		hunter.readCustomDataFromNbt(nbt);
 	}
 }

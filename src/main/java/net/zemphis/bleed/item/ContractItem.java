@@ -66,13 +66,16 @@ public class ContractItem extends Item {
 
     private void startHunt(PlayerEntity hunter, String target, int tier, long startTime) {
         if (hunter instanceof ServerPlayerEntity serverPlayer) {
-            NbtCompound hunterNbt = new NbtCompound();
-            hunterNbt.putString("HuntingTarget", target);
-            hunterNbt.putInt("HuntingTier", tier);
-            hunterNbt.putLong("HuntingStartTime", startTime);
-            hunterNbt.putBoolean("IsHunting", true);
+            NbtCompound fullPlayerNbt = new NbtCompound();
 
-            serverPlayer.writeCustomDataToNbt(hunterNbt);
+            serverPlayer.writeCustomDataToNbt(fullPlayerNbt);
+
+            fullPlayerNbt.putString("HuntingTarget", target);
+            fullPlayerNbt.putInt("HuntingTier", tier);
+            fullPlayerNbt.putLong("HuntingStartTime", startTime);
+            fullPlayerNbt.putBoolean("IsHunting", true);
+
+            serverPlayer.readCustomDataFromNbt(fullPlayerNbt);
         }
     }
 
