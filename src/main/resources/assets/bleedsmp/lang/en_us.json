@@ -3,5 +3,8 @@
   "item.bleedsmp.tier_ii_contract": "Tier II Contract",
   "item.bleedsmp.tier_iii_contract": "Tier III Contract",
 
-  "block.bleedsmp.contract_table": "Contract Table"
+  "block.bleedsmp.contract_table": "Contract Table",
+
+  "effect.bleedsmp.bloodlust": "Bloodlust",
+  "effect.bleedsmp.bleeding": "Bleeding"
 }

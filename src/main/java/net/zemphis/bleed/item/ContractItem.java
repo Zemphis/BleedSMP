@@ -27,6 +27,16 @@ public class ContractItem extends Item {
 
         if (world.isClient) return TypedActionResult.pass(stack);
 
+        if (user instanceof ServerPlayerEntity serverPlayer) {
+            NbtCompound playerNbt = new NbtCompound();
+            serverPlayer.writeCustomDataToNbt(playerNbt);
+
+            if (world.getTime() < playerNbt.getLong("GlobalContractCooldown")) {
+                user.sendMessage(Text.literal("You are globally blacklisted from hunting!").formatted(Formatting.RED), true);
+                return TypedActionResult.fail(stack);
+            }
+        }
+
         String targetName = getOwner(stack);
 
         // Signing logic
@@ -36,6 +46,7 @@ public class ContractItem extends Item {
             return TypedActionResult.success(stack);
         }
 
+        // Self check
         if (user.getName().getString().equals(targetName)) {
             user.sendMessage(Text.literal("Contract is yours"), true);
             return TypedActionResult.fail(stack);
@@ -49,10 +60,15 @@ public class ContractItem extends Item {
         long lastUsed = nbt.getLong("LastUsedTime");
         long cooldownTicks = 7*24000;
 
-        if (currentTime < lastUsed + cooldownTicks) {
+        if (lastUsed != 0 && currentTime < lastUsed + cooldownTicks) {
             long remainingDays = ((lastUsed + cooldownTicks) - currentTime) / 24000;
             user.sendMessage(Text.literal("Contract on cooldown. " + remainingDays + " days left.").formatted(Formatting.RED), true);
             return TypedActionResult.fail(stack);
+        }
+
+        // Tier 3 check
+        if (getTier(stack) == 3) {
+            nbt.putBoolean("IsActiveT3", true);
         }
 
         startHunt(user, targetName, getTier(stack), currentTime);
@@ -61,6 +77,7 @@ public class ContractItem extends Item {
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
 
         user.sendMessage(Text.literal("Hunt started: Target is " + targetName).formatted(Formatting.GOLD), true);
+
         return TypedActionResult.success(stack);
     }
 

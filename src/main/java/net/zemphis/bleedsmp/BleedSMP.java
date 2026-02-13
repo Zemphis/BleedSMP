@@ -11,11 +11,13 @@ import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.zemphis.bleed.block.ModBlocks;
+import net.zemphis.bleed.effect.ModEffects;
 import net.zemphis.bleed.item.ContractItem;
 import net.zemphis.bleed.item.ModItems;
 import net.zemphis.bleed.screen.ModScreenHandlers;
@@ -31,6 +33,7 @@ public class BleedSMP implements ModInitializer {
 		ModItems.registerModItems();
 		ModBlocks.registerModBlocks();
 		ModScreenHandlers.registerScreenHandlers();
+		ModEffects.registerEffects();
 
 		ServerLivingEntityEvents.AFTER_DEATH.register((livingEntity, damageSource) -> {
 			if (livingEntity instanceof ServerPlayerEntity player) {
@@ -47,7 +50,7 @@ public class BleedSMP implements ModInitializer {
 						String targetName = getHunterTargetName(hunter);
 
 						if (player.getName().getString().equals(targetName)) {
-							endHunt(hunter, getHunterTier(player), true);
+							endHunt(hunter, getHunterTier(hunter), true);
 						}
 					}
 				}
@@ -86,13 +89,46 @@ public class BleedSMP implements ModInitializer {
 					if (isCurrentlyHunting(serverHunter)) {
 						String huntTarget = getHunterTargetName(serverHunter);
 						if (target.getName().getString().equals(huntTarget)) {
-							applyTieredDebuffs(target, getHunterTier(serverHunter));
+							int tier = getHunterTier(serverHunter);
+							if (tier == 3) {
+								// bloodlust status effect
+								serverHunter.addStatusEffect(new StatusEffectInstance(ModEffects.BLOODLUST, 100, 0, false, false, true));
+								float damage = (float) serverHunter.getAttributeValue(net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE);
+//								float absorptionGain = damage; * 0.5F if needed for balance
+								float currentAbsorption = serverHunter.getAbsorptionAmount();
+								serverHunter.setAbsorptionAmount(Math.min(currentAbsorption + damage, 20.0f));
+
+								serverHunter.getServerWorld().spawnParticles(
+										ParticleTypes.HEART, serverHunter.getX(), serverHunter.getY() + 1.5,
+										serverHunter.getZ(), 3,0.2,0.2,0.2, 0.1);
+
+								// bleeding effect
+
+							}
+							applyTieredDebuffs(target, getHunterTier(serverHunter)); // on hit tiered debuffs
 						}
 					}
 				}
 			}
 
 			return ActionResult.PASS;
+		});
+
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			ServerPlayerEntity disconnectedPlayer = handler.getPlayer();
+			String disconnectedName = disconnectedPlayer.getName().getString();
+
+			for (ServerPlayerEntity hunter : server.getPlayerManager().getPlayerList()) {
+				if (isCurrentlyHunting(hunter) && getHunterTier(hunter) == 3) {
+					if (getHunterTargetName(hunter).equals(disconnectedName)) {
+						disconnectedPlayer.kill();
+						LOGGER.info("Target {} logged out during a Tier III hunt and was penalized.", disconnectedName);
+
+						endHunt(hunter, 3, true);
+						hunter.sendMessage(Text.literal("Target combat logged! Hunt successful.").formatted(Formatting.GREEN), false);
+					}
+				}
+			}
 		});
 	}
 
@@ -135,10 +171,6 @@ public class BleedSMP implements ModInitializer {
 			if (distanceSq < 1024) {
 				hunter.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 25, 1, false, false, true));
 				target.addStatusEffect(new StatusEffectInstance(StatusEffects.GLOWING, 25, 0, false, false, true));
-
-				if (tier == 3) {
-					// bloodlust later
-				}
 			}
 		}
 	}
@@ -162,19 +194,40 @@ public class BleedSMP implements ModInitializer {
 		nbt.putString("HuntingTarget", "");
 
 		if (!success) {
+			nbt.putLong("GlobalContractCooldown", hunter.getWorld().getTime() + (3 * 24000));
 			if (tier >= 1) {
 				// cooldown for 3 irl days
 				if (tier >= 2) {
-					// drop t2 contract on death
+					// drop t2 contract on next death
 					if (tier == 3) {
-						//consume contract and lose 2 permanent hearts
+						// hearts loss
+						var health = hunter.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_MAX_HEALTH);
+						if (health != null) {
+							net.minecraft.util.Identifier penaltyId = net.minecraft.util.Identifier.of(MOD_ID, "t3_failure_penalty");
+
+							health.removeModifier(penaltyId);
+							health.addPersistentModifier(new net.minecraft.entity.attribute.EntityAttributeModifier(
+									penaltyId, -4.0, // 2 hearts
+									net.minecraft.entity.attribute.EntityAttributeModifier.Operation.ADD_VALUE));
+						}
 					}
 				}
 			}
 		}
 
-		if (success && tier == 3) {
-			//consume contract
+		if (tier == 3) {
+			// consume contract
+			for (int i = 0; i < hunter.getInventory().size(); i++) {
+				ItemStack invStack = hunter.getInventory().getStack(i);
+				if (invStack.getItem() instanceof ContractItem) {
+					NbtComponent customData = invStack.get(DataComponentTypes.CUSTOM_DATA);
+					if (customData != null && customData.copyNbt().getBoolean("IsActiveT3")) {
+						invStack.setCount(0);
+						hunter.sendMessage(Text.literal("The Tier III Contract has been consumed.").formatted(Formatting.GRAY), false);
+						break;
+					}
+				}
+			}
 		}
 		hunter.readCustomDataFromNbt(nbt);
 	}
