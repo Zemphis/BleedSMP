@@ -81,7 +81,7 @@ public class ContractScreenHandler extends ScreenHandler {
     }
 
     protected static void updateResult(ScreenHandler handler, World world, PlayerEntity player, CraftingInventory inventory, CraftingResultInventory resultInventory) {
-        if (world.isClient) return;
+        if (world.isClient()) return;
 
         // Tier II Contract
         boolean isTier2Pattern = inventory.getStack(0).isOf(Items.DIAMOND_BLOCK) &&
@@ -138,7 +138,7 @@ public class ContractScreenHandler extends ScreenHandler {
     private static String getContractOwner(ItemStack stack) {
         NbtComponent nbtComponent = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (nbtComponent != null) {
-            return nbtComponent.copyNbt().getString("Owner");
+            return nbtComponent.copyNbt().getString("Owner").orElse("");
         }
         return "";
     }

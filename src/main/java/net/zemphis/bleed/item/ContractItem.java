@@ -2,19 +2,27 @@ package net.zemphis.bleed.item;
 
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.NbtComponent;
+import net.minecraft.component.type.TooltipDisplayComponent;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
+import net.minecraft.util.Identifier;
 import net.minecraft.world.World;
+import net.zemphis.bleed.hunt.HuntManager;
+import net.zemphis.bleed.hunt.HuntUtils;
+import net.zemphis.bleedsmp.BleedSMP;
 
-import javax.xml.crypto.Data;
-import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 public class ContractItem extends Item {
     public ContractItem(Settings settings) {
@@ -22,20 +30,17 @@ public class ContractItem extends Item {
     }
 
     @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+    public ActionResult use(World world, PlayerEntity user, Hand hand) {
         ItemStack stack = user.getStackInHand(hand);
 
-        if (world.isClient) return TypedActionResult.pass(stack);
+        if (world.isClient()) return ActionResult.PASS;
 
-        if (user instanceof ServerPlayerEntity serverPlayer) {
-            NbtCompound playerNbt = new NbtCompound();
-            serverPlayer.writeCustomDataToNbt(playerNbt);
-
-            if (world.getTime() < playerNbt.getLong("GlobalContractCooldown")) {
-                user.sendMessage(Text.literal("You are globally blacklisted from hunting!").formatted(Formatting.RED), true);
-                return TypedActionResult.fail(stack);
-            }
+        if (!(user instanceof ServerPlayerEntity serverPlayer)) return ActionResult.PASS;
+        if (HuntUtils.isHunting(serverPlayer)) {
+                user.sendMessage(Text.literal("You are already on a hunt!").formatted(Formatting.RED), true);
+                return ActionResult.FAIL;
         }
+
 
         String targetName = getOwner(stack);
 
@@ -43,13 +48,13 @@ public class ContractItem extends Item {
         if (targetName.isEmpty()) {
             setOwner(stack, user.getName().getString(), 1);
             user.sendMessage(Text.literal("Contract signed for target: " + user.getName().getString()), true);
-            return TypedActionResult.success(stack);
+            return ActionResult.SUCCESS;
         }
 
         // Self check
         if (user.getName().getString().equals(targetName)) {
-            user.sendMessage(Text.literal("Contract is yours"), true);
-            return TypedActionResult.fail(stack);
+            user.sendMessage(Text.literal("Contract is yours").formatted(Formatting.RED), true);
+            return ActionResult.FAIL;
         }
 
         // Activation logic
@@ -57,54 +62,44 @@ public class ContractItem extends Item {
         NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
         NbtCompound nbt = data != null ? data.copyNbt() : new NbtCompound();
 
-        long lastUsed = nbt.getLong("LastUsedTime");
-        long cooldownTicks = 7*24000;
+        long lastUsed = nbt.getLong("LastUsedTime").orElse(0L);
+        long cooldownTicks = 7 * 24000L;
+
+        ServerPlayerEntity targetPlayer = Objects.requireNonNull(serverPlayer.getEntityWorld().getServer()).getPlayerManager().getPlayer(targetName);
 
         if (lastUsed != 0 && currentTime < lastUsed + cooldownTicks) {
-            long remainingDays = ((lastUsed + cooldownTicks) - currentTime) / 24000;
+            long remainingDays = ((lastUsed + cooldownTicks) - currentTime) / 24000L;
             user.sendMessage(Text.literal("Contract on cooldown. " + remainingDays + " days left.").formatted(Formatting.RED), true);
-            return TypedActionResult.fail(stack);
+            return ActionResult.FAIL;
+        } else if (targetPlayer == null) {
+            user.sendMessage(Text.literal("Target is not online!").formatted(Formatting.RED), true);
+            return ActionResult.FAIL;
         }
 
-        // Tier 3 check
         if (getTier(stack) == 3) {
             nbt.putBoolean("IsActiveT3", true);
         }
 
-        startHunt(user, targetName, getTier(stack), currentTime);
+        HuntManager.startHunt(serverPlayer, targetPlayer, getTier(stack));
 
         nbt.putLong("LastUsedTime", currentTime);
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
 
         user.sendMessage(Text.literal("Hunt started: Target is " + targetName).formatted(Formatting.GOLD), true);
 
-        return TypedActionResult.success(stack);
-    }
-
-    private void startHunt(PlayerEntity hunter, String target, int tier, long startTime) {
-        if (hunter instanceof ServerPlayerEntity serverPlayer) {
-            NbtCompound fullPlayerNbt = new NbtCompound();
-
-            serverPlayer.writeCustomDataToNbt(fullPlayerNbt);
-
-            fullPlayerNbt.putString("HuntingTarget", target);
-            fullPlayerNbt.putInt("HuntingTier", tier);
-            fullPlayerNbt.putLong("HuntingStartTime", startTime);
-            fullPlayerNbt.putBoolean("IsHunting", true);
-
-            serverPlayer.readCustomDataFromNbt(fullPlayerNbt);
-        }
+        return ActionResult.SUCCESS;
     }
 
     @Override
-    public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, net.minecraft.item.tooltip.TooltipType type) {
+    @SuppressWarnings("deprecation")
+    public void appendTooltip(ItemStack stack, TooltipContext context, TooltipDisplayComponent data, Consumer<Text> tooltip, TooltipType type) {
         String owner = getOwner(stack);
         if (!owner.isEmpty()) {
-            tooltip.add(Text.literal("Bound to " + owner).formatted(Formatting.RED));
+            tooltip.accept(Text.literal("Bound to " + owner).formatted(Formatting.RED));
         } else {
-            tooltip.add(Text.literal("Unbound").formatted(Formatting.GRAY));
+            tooltip.accept(Text.literal("Unbound").formatted(Formatting.GRAY));
         }
-        super.appendTooltip(stack, context, tooltip, type);
+        super.appendTooltip(stack, context, data, tooltip, type);
     }
 
     public void setOwner(ItemStack stack, String ownerName, int tier) {
@@ -112,13 +107,13 @@ public class ContractItem extends Item {
         nbt.putString("Owner", ownerName);
         nbt.putInt("Tier", tier);
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
-        stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true); // sneaky zemphis watermark
+        stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
     }
 
     public String getOwner(ItemStack stack) {
         NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (data != null) {
-            return data.copyNbt().getString("Owner");
+            return data.copyNbt().getString("Owner").orElse("");
         }
         return "";
     }
@@ -126,11 +121,10 @@ public class ContractItem extends Item {
     public int getTier(ItemStack stack) {
         NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (data != null) {
-            return data.copyNbt().getInt("Tier");
+            return data.copyNbt().getInt("Tier").orElse(1);
         }
         return 1;
     }
-
 
     @Override
     public boolean hasGlint(ItemStack stack) {

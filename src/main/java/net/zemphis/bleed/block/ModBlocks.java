@@ -8,12 +8,16 @@ import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemGroups;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.sound.BlockSoundGroup;
 import net.minecraft.util.Identifier;
 import net.zemphis.bleedsmp.BleedSMP;
 
 public class ModBlocks {
-    public static final Block CONTRACT_TABLE = registerBlock("contract_table", new ContractTableBlock(AbstractBlock.Settings.create().strength(50.0f, 2.0f).requiresTool().sounds(BlockSoundGroup.NETHER_BRICKS))); // custom block implementation
+    public static final Block CONTRACT_TABLE = registerBlock("contract_table", new ContractTableBlock(AbstractBlock.Settings.create()
+            .registryKey(RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(BleedSMP.MOD_ID, "contract_table")))
+            .strength(50.0f, 2.0f).requiresTool().sounds(BlockSoundGroup.NETHER_BRICKS).nonOpaque())); // custom block implementation
 
     private static Block registerBlock(String name, Block block) {
         registerBlockItem(name, block);
@@ -21,7 +25,11 @@ public class ModBlocks {
     }
 
     private static void registerBlockItem(String name, Block block) {
-        Registry.register(Registries.ITEM, Identifier.of(BleedSMP.MOD_ID, name), new BlockItem(block, new Item.Settings()));
+        RegistryKey<Item> itemKey = RegistryKey.of(RegistryKeys.ITEM, Identifier.of(BleedSMP.MOD_ID, name));
+        Item.Settings itemSettings = new Item.Settings().registryKey(itemKey);
+
+        Registry.register(Registries.ITEM, Identifier.of(BleedSMP.MOD_ID, name),
+                new BlockItem(block, itemSettings));
     }
 
     public static  void registerModBlocks() {

@@ -22,8 +22,7 @@ public class ContractTableBlock extends Block {
 
     @Override
     public ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, BlockHitResult hit) {
-        if (!world.isClient) {
-            // Create the ScreenHandlerFactory directly here
+        if (!world.isClient()) {
             NamedScreenHandlerFactory screenHandlerFactory = new SimpleNamedScreenHandlerFactory(
                     (syncId, inventory, playerEntity) -> new ContractScreenHandler(syncId, inventory, ScreenHandlerContext.create(world, pos)),
                     TITLE
