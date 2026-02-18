@@ -6,6 +6,8 @@ import net.minecraft.util.Formatting;
 import net.zemphis.bleed.components.HuntComponent;
 import net.zemphis.bleed.components.ModComponents;
 
+import java.util.Objects;
+
 public class HuntManager {
 
     public static void startHunt(ServerPlayerEntity hunter, ServerPlayerEntity target, int tier) {
@@ -13,6 +15,8 @@ public class HuntManager {
         hunt.setHunting(true);
         hunt.setTargetName(target.getName().getString());
         hunt.setTier(tier);
+
+        hunt.setStartTime(Objects.requireNonNull(hunter.getEntityWorld().getServer()).getTicks());
 
         ModComponents.HUNT.sync(hunter);
 

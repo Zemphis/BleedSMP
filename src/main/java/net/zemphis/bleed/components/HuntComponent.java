@@ -12,4 +12,7 @@ public interface HuntComponent extends Component, AutoSyncedComponent {
 
     int getTier();
     void setTier(int tier);
+
+    long getStartTime();
+    void setStartTime(long ticks);
 }

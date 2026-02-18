@@ -17,6 +17,7 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.World;
+import net.zemphis.bleed.components.ModComponents;
 import net.zemphis.bleed.hunt.HuntManager;
 import net.zemphis.bleed.hunt.HuntUtils;
 import net.zemphis.bleedsmp.BleedSMP;
@@ -37,10 +38,24 @@ public class ContractItem extends Item {
 
         if (!(user instanceof ServerPlayerEntity serverPlayer)) return ActionResult.PASS;
         if (HuntUtils.isHunting(serverPlayer)) {
-                user.sendMessage(Text.literal("You are already on a hunt!").formatted(Formatting.RED), true);
+            long huntDuration = 12000L;
+            long startTicks = ModComponents.HUNT.get(serverPlayer).getStartTime();
+            long currentTicks = Objects.requireNonNull(serverPlayer.getEntityWorld().getServer()).getTicks();
+            long elapsedTicks =currentTicks - startTicks;
+            long remainingTicks = huntDuration - elapsedTicks;
+
+            if (remainingTicks > 0) {
+                long totalSeconds = remainingTicks / 20;
+                long minutes = totalSeconds / 60;
+                long seconds = totalSeconds % 60;
+
+                String timeRemaining = String.format("%d:%02d", minutes, seconds);
+                user.sendMessage(Text.literal("You are already on a hunt! Time Remaining" +  timeRemaining).formatted(Formatting.RED), true);
+            } else {
+                HuntManager.stopHunt(serverPlayer, false);
+            }
                 return ActionResult.FAIL;
         }
-
 
         String targetName = getOwner(stack);
 
@@ -52,10 +67,10 @@ public class ContractItem extends Item {
         }
 
         // Self check
-        if (user.getName().getString().equals(targetName)) {
-            user.sendMessage(Text.literal("Contract is yours").formatted(Formatting.RED), true);
-            return ActionResult.FAIL;
-        }
+//        if (user.getName().getString().equals(targetName)) {
+//            user.sendMessage(Text.literal("Contract is yours").formatted(Formatting.RED), true);
+//            return ActionResult.FAIL;
+//        }
 
         // Activation logic
         long currentTime = world.getTime();

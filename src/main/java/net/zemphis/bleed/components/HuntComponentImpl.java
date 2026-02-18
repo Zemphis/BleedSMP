@@ -21,11 +21,17 @@ public class HuntComponentImpl implements HuntComponent {
     @Override public int getTier() { return tier; }
     @Override public void setTier(int tier) { this.tier = tier; }
 
+    private long startTime = 0L;
+
+    @Override public long getStartTime() { return startTime; }
+    @Override public void setStartTime(long ticks) { this.startTime = ticks; }
+
     @Override
     public void readData(ReadView view) {
         this.hunting = view.getBoolean("isHunting", false);
         this.targetName = view.getString("targetName", "");
         this.tier = view.getInt("tier", 0);
+        this.startTime = view.getLong("startTime", 0L);
     }
 
     @Override
@@ -33,5 +39,6 @@ public class HuntComponentImpl implements HuntComponent {
         view.putBoolean("isHunting", hunting);
         view.putString("targetName", targetName);
         view.putInt("tier", tier);
+        view.putLong("startTime", startTime);
     }
 }
