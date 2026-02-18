@@ -16,4 +16,12 @@ public class HuntUtils {
     public static int getTier(ServerPlayerEntity player) {
         return ModComponents.HUNT.get(player).getTier();
     }
+
+    public static boolean shouldDropT2(ServerPlayerEntity player) {
+        return ModComponents.HUNT.get(player).shouldDropT2();
+    }
+
+    public static long getLastFailure(ServerPlayerEntity player) {
+        return ModComponents.HUNT.get(player).getLastFailure();
+    }
 }

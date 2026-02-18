@@ -15,4 +15,10 @@ public interface HuntComponent extends Component, AutoSyncedComponent {
 
     long getStartTime();
     void setStartTime(long ticks);
+
+    long getLastFailure();
+    void setLastFailure(long ticks);
+
+    boolean shouldDropT2();
+    void setT2Drop(boolean value);
 }

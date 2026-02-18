@@ -8,97 +8,91 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
 import net.minecraft.world.World;
 import net.zemphis.bleed.components.ModComponents;
 import net.zemphis.bleed.hunt.HuntManager;
 import net.zemphis.bleed.hunt.HuntUtils;
-import net.zemphis.bleedsmp.BleedSMP;
 
 import java.util.Objects;
 import java.util.function.Consumer;
 
 public class ContractItem extends Item {
-    public ContractItem(Settings settings) {
+    private final int contractTier;
+
+    public ContractItem(Settings settings, int tier) {
         super(settings);
+        this.contractTier = tier;
+    }
+
+    public int getTier() {
+        return this.contractTier;
     }
 
     @Override
     public ActionResult use(World world, PlayerEntity user, Hand hand) {
         ItemStack stack = user.getStackInHand(hand);
 
-        if (world.isClient()) return ActionResult.PASS;
+        if (world.isClient() || !(user instanceof ServerPlayerEntity hunter)) return ActionResult.PASS;
 
-        if (!(user instanceof ServerPlayerEntity serverPlayer)) return ActionResult.PASS;
-        if (HuntUtils.isHunting(serverPlayer)) {
+        long currentTicks = hunter.getEntityWorld().getServer().getTicks();
+        long lastFail = ModComponents.HUNT.get(hunter).getLastFailure();
+        if (lastFail >= 0 && currentTicks < lastFail + 36000L) { // 30 mins * 60s * 20 ticks
+            hunter.sendMessage(Text.literal("Contract lockout!").formatted(Formatting.RED), true);
+            return ActionResult.FAIL;
+        }
+
+        // Hunt state check and time remaining
+        if (HuntUtils.isHunting(hunter)) {
             long huntDuration = 12000L;
-            long startTicks = ModComponents.HUNT.get(serverPlayer).getStartTime();
-            long currentTicks = Objects.requireNonNull(serverPlayer.getEntityWorld().getServer()).getTicks();
-            long elapsedTicks =currentTicks - startTicks;
+            long startTicks = ModComponents.HUNT.get(hunter).getStartTime();
+            long elapsedTicks = currentTicks - startTicks;
             long remainingTicks = huntDuration - elapsedTicks;
 
             if (remainingTicks > 0) {
-                long totalSeconds = remainingTicks / 20;
+                long totalSeconds = Math.max(0, remainingTicks / 20);
                 long minutes = totalSeconds / 60;
                 long seconds = totalSeconds % 60;
 
                 String timeRemaining = String.format("%d:%02d", minutes, seconds);
-                user.sendMessage(Text.literal("You are already on a hunt! Time Remaining" +  timeRemaining).formatted(Formatting.RED), true);
+                user.sendMessage(Text.literal("You are already on a hunt! Time Remaining " +  timeRemaining).formatted(Formatting.RED), true);
             } else {
-                HuntManager.stopHunt(serverPlayer, false);
+                HuntManager.stopHunt(hunter, false);
             }
                 return ActionResult.FAIL;
         }
 
         String targetName = getOwner(stack);
 
-        // Signing logic
+        // Signing logic for testing
         if (targetName.isEmpty()) {
-            setOwner(stack, user.getName().getString(), 1);
+            setOwner(stack, user.getName().getString());
             user.sendMessage(Text.literal("Contract signed for target: " + user.getName().getString()), true);
             return ActionResult.SUCCESS;
         }
 
         // Self check
-//        if (user.getName().getString().equals(targetName)) {
-//            user.sendMessage(Text.literal("Contract is yours").formatted(Formatting.RED), true);
-//            return ActionResult.FAIL;
-//        }
-
-        // Activation logic
-        long currentTime = world.getTime();
-        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
-        NbtCompound nbt = data != null ? data.copyNbt() : new NbtCompound();
-
-        long lastUsed = nbt.getLong("LastUsedTime").orElse(0L);
-        long cooldownTicks = 7 * 24000L;
-
-        ServerPlayerEntity targetPlayer = Objects.requireNonNull(serverPlayer.getEntityWorld().getServer()).getPlayerManager().getPlayer(targetName);
-
-        if (lastUsed != 0 && currentTime < lastUsed + cooldownTicks) {
-            long remainingDays = ((lastUsed + cooldownTicks) - currentTime) / 24000L;
-            user.sendMessage(Text.literal("Contract on cooldown. " + remainingDays + " days left.").formatted(Formatting.RED), true);
+        if (user.getName().getString().equals(targetName)) {
+            user.sendMessage(Text.literal("Contract is yours").formatted(Formatting.RED), true);
             return ActionResult.FAIL;
-        } else if (targetPlayer == null) {
+        }
+
+        // Target status check
+        ServerPlayerEntity target = Objects.requireNonNull(hunter.getEntityWorld().getServer()).getPlayerManager().getPlayer(targetName);
+        if (target == null) {
             user.sendMessage(Text.literal("Target is not online!").formatted(Formatting.RED), true);
             return ActionResult.FAIL;
         }
 
+        HuntManager.startHunt(hunter, target,((ContractItem) stack.getItem()).getTier());
+
         if (getTier(stack) == 3) {
-            nbt.putBoolean("IsActiveT3", true);
+            stack.decrement(1);
         }
-
-        HuntManager.startHunt(serverPlayer, targetPlayer, getTier(stack));
-
-        nbt.putLong("LastUsedTime", currentTime);
-        stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
 
         user.sendMessage(Text.literal("Hunt started: Target is " + targetName).formatted(Formatting.GOLD), true);
 
@@ -117,10 +111,9 @@ public class ContractItem extends Item {
         super.appendTooltip(stack, context, data, tooltip, type);
     }
 
-    public void setOwner(ItemStack stack, String ownerName, int tier) {
+    public void setOwner(ItemStack stack, String ownerName) {
         NbtCompound nbt = new NbtCompound();
         nbt.putString("Owner", ownerName);
-        nbt.putInt("Tier", tier);
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
         stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
     }

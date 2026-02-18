@@ -13,9 +13,10 @@ import net.zemphis.bleedsmp.BleedSMP;
 
 public class ModItems {
 
-    public static final Item TIER_I_CONTRACT = new ContractItem(createSettings("tier_i_contract"));
-    public static final Item TIER_II_CONTRACT = new ContractItem(createSettings("tier_ii_contract"));
-    public static final Item TIER_III_CONTRACT = new ContractItem(createSettings("tier_iii_contract"));
+    public static final Item TIER_I_CONTRACT = new ContractItem(createSettings("tier_i_contract"), 1);
+    public static final Item TIER_II_CONTRACT = new ContractItem(createSettings("tier_ii_contract"), 2);
+    public static final Item TIER_III_CONTRACT = new ContractItem(createSettings("tier_iii_contract"), 3);
+
 
     private static Item registerItem(String name, Item item) {
         Identifier id = Identifier.of(BleedSMP.MOD_ID, name);

@@ -1,18 +1,25 @@
 package net.zemphis.bleedsmp;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.command.argument.EntityArgumentType;
+import net.minecraft.command.permission.Permission;
+import net.minecraft.command.permission.PermissionLevel;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.zemphis.bleed.block.ModBlocks;
+import net.zemphis.bleed.components.ModComponents;
 import net.zemphis.bleed.effect.ModEffects;
 import net.zemphis.bleed.item.ContractItem;
 import net.zemphis.bleed.item.ModItems;
@@ -43,7 +50,7 @@ public class BleedSMP implements ModInitializer {
 				// Drop contract
 				ItemStack contractStack = new ItemStack(ModItems.TIER_I_CONTRACT);
 				if (contractStack.getItem() instanceof ContractItem contractItem) {
-					contractItem.setOwner(contractStack, player.getName().getString(), 1);
+					contractItem.setOwner(contractStack, player.getName().getString());
 				}
 				player.dropItem(contractStack, true, false);
 
@@ -63,6 +70,12 @@ public class BleedSMP implements ModInitializer {
 							false
 					);
 				}
+
+				if (HuntUtils.shouldDropT2(player)) {
+					player.dropItem(new ItemStack(ModItems.TIER_II_CONTRACT), true, false);
+					ModComponents.HUNT.get(player).setT2Drop(false); // Debt cleared
+					ModComponents.HUNT.sync(player);
+				}
 			}
 		});
 
@@ -74,17 +87,35 @@ public class BleedSMP implements ModInitializer {
 				String targetName = HuntUtils.getTargetName(hunter);
 				ServerPlayerEntity target = server.getPlayerManager().getPlayer(targetName);
 
-				if (target == null) {
+				long huntDuration = 12000L;
+				long startTicks = ModComponents.HUNT.get(hunter).getStartTime();
+				long currentTicks = server.getTicks();
+
+				if (currentTicks - startTicks >= huntDuration) {
 					HuntManager.stopHunt(hunter, false);
-					hunter.sendMessage(
-							Text.literal("Your target is no longer online. Hunt cancelled.").formatted(Formatting.RED),
-							false
-					);
+					hunter.sendMessage(Text.literal("Time's up! The target survived. Hunt Failed.")
+							.formatted(Formatting.RED), false);
 					continue;
 				}
-
-				applyHuntBuffs(hunter, HuntUtils.getTier(hunter));
 			}
+		});
+
+		// ===================== DISCONNECT EVENT =====================
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			ServerPlayerEntity player = handler.getPlayer();
+
+			// hunter log out
+			if (HuntUtils.isHunting(player)) {
+				HuntManager.stopHunt(player, false);
+			}
+
+			// target log out
+			server.getPlayerManager().getPlayerList().forEach(hunter -> {
+				if (HuntUtils.isHunting(hunter) && HuntUtils.getTargetName(hunter).equals(player.getName().getString())) {
+					HuntManager.stopHunt(player, true);
+					hunter.sendMessage(Text.literal("Target logged out. Hunt successful.").formatted(Formatting.GRAY));
+				}
+			});
 		});
 
 		// ===================== ATTACK EVENT =====================
@@ -93,56 +124,94 @@ public class BleedSMP implements ModInitializer {
 				if (entity instanceof ServerPlayerEntity target && HuntUtils.isHunting(serverHunter)) {
 					String huntTarget = HuntUtils.getTargetName(serverHunter);
 
-					if (target.getName().getString().equals(huntTarget)) {
+					if (entity instanceof ServerPlayerEntity victim && HuntUtils.isHunting(serverHunter)) {
 						int tier = HuntUtils.getTier(serverHunter);
+						serverHunter.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 20, 0, false, false, true));
+						victim.addStatusEffect(new StatusEffectInstance(StatusEffects.GLOWING, 400, 0, false, false, true));
 
-						// Tier 3 hunter buffs
-						if (tier == 3) {
-							serverHunter.addStatusEffect(
-									new StatusEffectInstance(ModEffects.BLOODLUST, 100, 0, false, false, true)
-							);
-
-							float damage = (float) serverHunter.getAttributeValue(
-									net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE
-							);
-							serverHunter.setAbsorptionAmount(Math.min(serverHunter.getAbsorptionAmount() + damage, 20f));
-
-							serverHunter.getEntityWorld().spawnParticles(
-									ParticleTypes.HEART,
-									serverHunter.getX(), serverHunter.getY() + 1.5, serverHunter.getZ(),
-									3, 0.2, 0.2, 0.2, 0.1
-							);
+						if (tier >= 2) {
+							victim.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 60, 1));
 						}
 
-						applyTieredDebuffs(target, tier);
+						serverHunter.getEntityWorld().spawnParticles(
+								ParticleTypes.SWEEP_ATTACK,
+								victim.getX(), victim.getY() + 1.0, victim.getZ(),
+								1, 0, 0, 0, 0
+						);
 					}
 				}
 			}
 			return ActionResult.PASS;
 		});
-	}
 
-	// ===================== BUFFS =====================
-	private void applyHuntBuffs(ServerPlayerEntity hunter, int tier) {
-		var server = hunter.getEntityWorld().getServer();
-		if (server == null) return;
+		// ===================== COMMAND EVENT =====================
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+			dispatcher.register(CommandManager.literal("huntadmin")
+							.requires(source ->
+									source.getPermissions().hasPermission(
+											new Permission.Level(PermissionLevel.GAMEMASTERS)
+									)
+							)
 
-		ServerPlayerEntity target = Objects.requireNonNull(hunter.getEntityWorld().getServer()).getPlayerManager().getPlayer(HuntUtils.getTargetName(hunter));
+							.then(CommandManager.literal("clearLockout")
+									.then(CommandManager.argument("target", EntityArgumentType.player())
+											.executes(context -> {
+												ServerPlayerEntity target =
+														EntityArgumentType.getPlayer(context, "target");
 
-		if (target != null && target.getEntityWorld() == hunter.getEntityWorld()) {
-			if (hunter.squaredDistanceTo(target) < 1024) {
-				hunter.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 5, 0, false, false, true));
-				target.addStatusEffect(new StatusEffectInstance(StatusEffects.GLOWING, 5, 0, false, false, true));
-			}
-		}
-	}
+												var data = ModComponents.HUNT.get(target);
+												data.setLastFailure(-1L);
+												ModComponents.HUNT.sync(target);
 
-	private void applyTieredDebuffs(ServerPlayerEntity target, int tier) {
-		if (tier == 1) {
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 10, 0));
-		} else if (tier == 2) {
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 10, 1));
-			target.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 10, 1));
-		}
+												context.getSource().sendFeedback(
+														() -> Text.literal("Cleared hunt lockout for "
+																+ target.getName().getString()),
+														true
+												);
+												return 1;
+											})
+									)
+							)
+
+							.then(CommandManager.literal("clearDebt")
+									.then(CommandManager.argument("target", EntityArgumentType.player())
+											.executes(context -> {
+												ServerPlayerEntity target =
+														EntityArgumentType.getPlayer(context, "target");
+
+												var data = ModComponents.HUNT.get(target);
+												data.setT2Drop(false);
+												ModComponents.HUNT.sync(target);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("Cleared Tier 2 debt for "
+																+ target.getName().getString()),
+														true
+												);
+												return 1;
+											})
+									)
+							)
+
+							.then(CommandManager.literal("stopHunt")
+									.then(CommandManager.argument("target", EntityArgumentType.player())
+											.executes(context -> {
+												ServerPlayerEntity target =
+														EntityArgumentType.getPlayer(context, "target");
+
+												HuntManager.stopHunt(target, true);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("Force-stopped hunt for "
+																+ target.getName().getString()),
+														true
+												);
+												return 1;
+											})
+									)
+							)
+			);
+		});
+
 	}
 }
