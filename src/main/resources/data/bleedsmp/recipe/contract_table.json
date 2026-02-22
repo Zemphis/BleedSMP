@@ -2,20 +2,14 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "key": {
-    "A": {
-      "item": "minecraft:crafting_table"
-    },
-    "B": {
-      "item": "minecraft:diamond_block"
-    },
-    "C": {
-      "item": "minecraft:nautilus_shell"
-    }
+    "#": "minecraft:quartz_block",
+    "C": "bleedsmp:tier_i_contract",
+    "W": "minecraft:pale_oak_wood"
   },
   "pattern": [
-    "BCB",
-    "CAC",
-    "BCB"
+    "###",
+    "C#C",
+    "WWW"
   ],
   "result": {
     "count": 1,

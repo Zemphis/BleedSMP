@@ -90,7 +90,7 @@ public class ContractItem extends Item {
 
         HuntManager.startHunt(hunter, target,((ContractItem) stack.getItem()).getTier());
 
-        if (getTier(stack) == 3) {
+        if (((ContractItem) stack.getItem()).getTier() == 3) { // tier 3 contract consume logic fix
             stack.decrement(1);
         }
 

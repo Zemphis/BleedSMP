@@ -72,7 +72,7 @@ public class BleedSMP implements ModInitializer {
 				}
 
 				if (HuntUtils.shouldDropT2(player)) {
-					player.dropItem(new ItemStack(ModItems.TIER_II_CONTRACT), true, false);
+					player.dropItem(new ItemStack(ModItems.TIER_II_CONTRACT), true, true);
 					ModComponents.HUNT.get(player).setT2Drop(false); // Debt cleared
 					ModComponents.HUNT.sync(player);
 				}
@@ -131,6 +131,9 @@ public class BleedSMP implements ModInitializer {
 
 						if (tier >= 2) {
 							victim.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 60, 1));
+							if (tier >= 3) {
+								serverHunter.addStatusEffect(new StatusEffectInstance(StatusEffects.HEALTH_BOOST, 60, 0));
+							}
 						}
 
 						serverHunter.getEntityWorld().spawnParticles(
